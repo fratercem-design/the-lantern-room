@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Lantern Room · Cult of Psyche</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏮</text></svg>">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,300..800;1,6..72,300..800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            atelier: {
+              bg: "#120D16",
+              surface: "#211529",
+              elevated: "#2C1D35",
+              paper: "#E9DFC8",
+              lilac: "#B69CFF",
+              teal: "#55C2B3",
+              gold: "#D3A84D",
+              carmine: "#C75C68"
+            }
+          },
+          fontFamily: {
+            serif: ['"Cinzel"', 'serif'],
+            reading: ['"Newsreader"', 'serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+            ui: ['"Inter"', 'sans-serif']
+          },
+          transitionDuration: {
+            '160': '160ms',
+            '240': '240ms',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Global Atelier Styles */
+    body {
+      background-color: #120D16;
+      color: #E9DFC8;
+      font-family: "Inter", sans-serif;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+    }
+    
+    ::selection {
+      background-color: #B69CFF;
+      color: #120D16;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: #2C1D35;
+      border-radius: 8px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background-color: #B69CFF;
+    }
+
+    /* Focus Visible accessibility */
+    *:focus-visible {
+      outline: 2px solid #B69CFF;
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./index.tsx"></script>
+</body>
+</html>
