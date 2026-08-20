@@ -3,7 +3,7 @@ import { AppState, AppAction } from '../../app/workflowReducer';
 import { ShieldCheck, Download, AlertTriangle, FileText, Check, Copy } from 'lucide-react';
 
 export const SealWorkspace: React.FC<{ state: AppState; dispatch: React.Dispatch<AppAction> }> = ({ state, dispatch }) => {
-  const { dossier, reviewState, userConfirmed, artifactVersion, stage } = state;
+  const { dossier, reviewState, userConfirmed, artifactVersion, stage, selectedShapeId } = state;
   const [copiedDocs, setCopiedDocs] = useState(false);
 
   if (!dossier) return null;
@@ -19,44 +19,123 @@ export const SealWorkspace: React.FC<{ state: AppState; dispatch: React.Dispatch
   };
 
   const handleCopyDocsPackage = () => {
-    const formattedDocsText = `# ${dossier.meta.workingTitle}
-*Cult of Psyche Production Package · Version ${artifactVersion}.0*
+    const selectedShape = dossier.shapes.find(s => s.id === selectedShapeId) || dossier.shapes[0];
 
-## Logline & Editorial Promise
-${dossier.meta.logline}
+    const lines: string[] = [];
+    lines.push("# " + dossier.meta.workingTitle);
+    lines.push("*Cult of Psyche Production Package · Version " + artifactVersion + ".0 · " + new Date().toISOString() + "*");
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+    lines.push("## Executive Summary & Metadata");
+    lines.push("- **Project ID:** " + dossier.meta.projectId);
+    lines.push("- **Logline:** " + dossier.meta.logline);
+    lines.push("- **Target Format:** " + (dossier.meta.targetFormat || "20–30 min Deep Dive"));
+    lines.push("- **Editorial Tone:** " + (dossier.meta.tone || "Academic-Occult / Darkly Inquisitive"));
+    lines.push("- **Review State:** " + reviewState.toUpperCase());
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+    lines.push("## 1. Grounded Claim Ledger");
+    dossier.claims.forEach(c => {
+      lines.push("### [" + c.status.toUpperCase() + "] " + c.id);
+      lines.push(c.text);
+      lines.push("- **Sources:** " + (c.sourceIds.length > 0 ? c.sourceIds.join(', ') : 'Needs verifiable citation'));
+      lines.push("- **Confidence Note:** " + (c.confidenceNote || 'None'));
+      lines.push("");
+    });
+    lines.push("---");
+    lines.push("");
+    lines.push("## 2. Source Bibliography & Grounding Index");
+    dossier.sources.forEach(s => {
+      lines.push("### [" + s.id + "] " + s.title + " (" + s.sourceType.toUpperCase() + ")");
+      lines.push("- **Citation:** " + s.citation);
+      lines.push("- **URL:** " + (s.url || 'Primary Physical/Archival Text'));
+      lines.push("- **Credibility:** " + s.credibilityScore + "/5 | **Status:** " + s.verificationState.toUpperCase());
+      lines.push("- **Key Points:**");
+      s.keyPoints.forEach(kp => lines.push("  - " + kp));
+      lines.push("");
+    });
+    lines.push("---");
+    lines.push("");
+    lines.push("## 3. Lens Matrix (Editorial Perspective Separation)");
+    dossier.lenses.forEach(l => {
+      lines.push("### " + l.type.toUpperCase() + " LENS: " + l.title);
+      lines.push(l.body);
+      lines.push("**Key Points:** " + l.keyPoints.join('; '));
+      lines.push("");
+    });
+    lines.push("---");
+    lines.push("");
+    lines.push("## 4. Selected Episode Architecture: " + selectedShape.title);
+    lines.push("- **Archetype:** " + selectedShape.archetype.replace(/_/g, ' ').toUpperCase());
+    lines.push("- **Estimated Runtime:** ~" + selectedShape.estimatedRuntimeMinutes + " minutes");
+    lines.push("- **Cold Open:** " + selectedShape.coldOpen);
+    lines.push("- **Central Question:** " + selectedShape.centralQuestion);
+    lines.push("- **Escalation:** " + selectedShape.escalation);
+    lines.push("- **Reversal:** " + selectedShape.reversal);
+    lines.push("- **Emotional Beat:** " + selectedShape.emotionalBeat);
+    lines.push("- **Takeaway:** " + selectedShape.takeaway);
+    lines.push("- **Closing Image:** " + selectedShape.closingImage);
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+    lines.push("## 5. Paced Production Script");
+    dossier.script.forEach(s => {
+      lines.push("### " + s.section);
+      lines.push("*Tone: " + s.tone + (s.isComedyBeat ? ' | [COMEDY BEAT]' : '') + "*");
+      lines.push(s.narration);
+      lines.push("");
+      lines.push("- **VISUAL DIRECTION:** " + s.visualCue);
+      lines.push("- **CITATIONS:** " + (s.sourceIds.join(', ') || 'Uncited commentary'));
+      lines.push("");
+    });
+    lines.push("---");
+    lines.push("");
+    lines.push("## 6. Title Concepts (Scored Editorial Rubric)");
+    dossier.production.titles.forEach((t, i) => {
+      lines.push((i + 1) + ". " + t);
+    });
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+    lines.push("## 7. Thumbnail Visual Directives");
+    dossier.production.thumbnails.forEach(th => {
+      lines.push("### Concept: " + th.concept);
+      lines.push("- **Overlay Text:** \"" + th.textOverlay + "\"");
+      lines.push("- **Composition:** " + th.composition);
+      lines.push("- **Visual Generation Prompt:** " + th.visualPrompt);
+      lines.push("");
+    });
+    lines.push("---");
+    lines.push("");
+    lines.push("## 8. Shot List & Visual Pacing");
+    dossier.production.shotList.forEach(sh => {
+      lines.push("- **" + sh.timecode + ":** " + sh.visualIntent + " [Asset: " + sh.assetType + " | Fallback: " + sh.fallback + "]");
+    });
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+    lines.push("## 9. Shorts / Reels Adaptations");
+    dossier.production.shortsCutdowns.forEach(sc => {
+      lines.push("### Short: " + sc.hook);
+      lines.push("- **Adapted Script:** " + sc.adaptedCopy);
+      lines.push("- **CTA:** " + sc.cta);
+      lines.push("");
+    });
+    lines.push("---");
+    lines.push("");
+    lines.push("## 10. YouTube Publication Package");
+    lines.push("### Description");
+    lines.push(dossier.production.description);
+    lines.push("");
+    lines.push("### Chapter Markers");
+    dossier.production.chapters.forEach(ch => {
+      lines.push(ch.timestamp + " - " + ch.title);
+    });
 
----
-
-## 1. Grounded Claim Ledger
-${dossier.claims.map(c => `- [${c.status.toUpperCase()}] ${c.text} (Sources: ${c.sourceIds.join(', ') || 'None'})`).join('\n')}
-
----
-
-## 2. Lens Matrix
-${dossier.lenses.map(l => `### ${l.type.toUpperCase()}: ${l.title}\n${l.body}\nKey points: ${l.keyPoints.join('; ')}`).join('\n\n')}
-
----
-
-## 3. Paced Production Script
-${dossier.script.map(s => `### ${s.section} [${s.tone}]\n${s.narration}\n*VISUAL:* ${s.visualCue}\n*CITATIONS:* ${s.sourceIds.join(', ')}`).join('\n\n')}
-
----
-
-## 4. Title Concepts (Scored Rubric)
-${dossier.production.titles.map((t, i) => `${i + 1}. ${t}`).join('\n')}
-
----
-
-## 5. Thumbnail Prompts
-${dossier.production.thumbnails.map(th => `- ${th.concept} (Overlay: "${th.textOverlay}"): ${th.visualPrompt}`).join('\n')}
-
----
-
-## 6. Shot List
-${dossier.production.shotList.map(sh => `- ${sh.timecode} | ${sh.visualIntent} (${sh.assetType})`).join('\n')}
-`;
-
-    navigator.clipboard.writeText(formattedDocsText);
+    const fullPackageText = lines.join('\n');
+    navigator.clipboard.writeText(fullPackageText);
     setCopiedDocs(true);
     setTimeout(() => setCopiedDocs(false), 3000);
   };
@@ -65,7 +144,7 @@ ${dossier.production.shotList.map(sh => `- ${sh.timecode} | ${sh.visualIntent} (
     if (!canDownload) return;
 
     const exportPackage = {
-      prototype: false,
+      prototype: state.providerMode === 'fixture',
       provider: state.providerMode,
       artifactVersion,
       reviewState,
@@ -77,7 +156,7 @@ ${dossier.production.shotList.map(sh => `- ${sh.timecode} | ${sh.visualIntent} (
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPackage, null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `Lantern_Dossier_${dossier.meta.projectId}_v${artifactVersion}.json`);
+    downloadAnchorNode.setAttribute("download", "Lantern_Dossier_" + dossier.meta.projectId + "_v" + artifactVersion + ".json");
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
@@ -182,7 +261,7 @@ ${dossier.production.shotList.map(sh => `- ${sh.timecode} | ${sh.visualIntent} (
               ) : (
                 <>
                   <FileText className="w-4 h-4 text-atelier-lilac" />
-                  <span>Copy Google Docs Package</span>
+                  <span>Google Docs–Ready Clipboard Package</span>
                 </>
               )}
             </button>
