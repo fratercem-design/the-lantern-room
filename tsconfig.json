@@ -29,6 +29,7 @@
     "components",
     "tests",
     "App.tsx",
-    "index.tsx"
+    "index.tsx",
+    "api"
   ]
 }

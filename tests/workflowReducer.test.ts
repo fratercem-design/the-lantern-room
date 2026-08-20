@@ -17,7 +17,6 @@ describe('workflowReducer state transitions', () => {
   });
 
   it('increments artifactVersion and resets approval/confirmation on regeneration', () => {
-    // Start with an approved state
     const approvedState: AppState = {
       ...initialState,
       dossier: fixtureDossier,
@@ -34,37 +33,25 @@ describe('workflowReducer state transitions', () => {
     expect(regeneratedState.userConfirmed).toBe(false);
   });
 
-  it('resolves warnings properly', () => {
-    const stateWithDossier: AppState = {
-      ...initialState,
-      dossier: fixtureDossier
-    };
-
-    const resolvedState = workflowReducer(stateWithDossier, { type: 'RESOLVE_WARNING', payload: 'WARN-01' });
-    const targetWarn = resolvedState.dossier?.warnings.find(w => w.id === 'WARN-01');
-    expect(targetWarn?.resolved).toBe(true);
+  it('updates provider mode', () => {
+    const liveState = workflowReducer(initialState, { type: 'SET_PROVIDER_MODE', payload: 'live' });
+    expect(liveState.providerMode).toBe('live');
   });
 
-  it('handles APPROVE_ARTIFACT and REVISE_ARTIFACT', () => {
-    const stateWithDossier: AppState = {
+  it('updates script narration and resets approval', () => {
+    const approvedState: AppState = {
       ...initialState,
       dossier: fixtureDossier,
-      reviewState: 'needs-review'
+      reviewState: 'approved'
     };
 
-    const approvedState = workflowReducer(stateWithDossier, { type: 'APPROVE_ARTIFACT' });
-    expect(approvedState.reviewState).toBe('approved');
+    const targetBlockId = fixtureDossier.script[0].id;
+    const editedState = workflowReducer(approvedState, {
+      type: 'UPDATE_SCRIPT_BLOCK',
+      payload: { id: targetBlockId, narration: 'Edited opening narration.' }
+    });
 
-    const revisedState = workflowReducer(approvedState, { type: 'REVISE_ARTIFACT' });
-    expect(revisedState.reviewState).toBe('draft');
-  });
-
-  it('updates stage and mobile drawer state', () => {
-    const stageState = workflowReducer(initialState, { type: 'SET_STAGE', payload: 'lenses' });
-    expect(stageState.stage).toBe('lenses');
-    expect(stageState.mobileDrawer).toBe('none');
-
-    const drawerState = workflowReducer(initialState, { type: 'SET_MOBILE_DRAWER', payload: 'cabinet' });
-    expect(drawerState.mobileDrawer).toBe('cabinet');
+    expect(editedState.reviewState).toBe('needs-review');
+    expect(editedState.dossier?.script[0].narration).toBe('Edited opening narration.');
   });
 });

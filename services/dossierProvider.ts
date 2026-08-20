@@ -1,5 +1,7 @@
 import { LanternDossier } from '../shared/lanternSchema';
 
+export type ProviderMode = 'fixture' | 'live';
+
 export interface DossierRequest {
   topic: string;
   format?: string;

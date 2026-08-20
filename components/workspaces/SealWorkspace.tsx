@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AppState, AppAction } from '../../app/workflowReducer';
-import { ShieldCheck, Download, AlertTriangle, CheckCircle2, FileJson } from 'lucide-react';
+import { ShieldCheck, Download, AlertTriangle, FileText, Check, Copy } from 'lucide-react';
 
 export const SealWorkspace: React.FC<{ state: AppState; dispatch: React.Dispatch<AppAction> }> = ({ state, dispatch }) => {
   const { dossier, reviewState, userConfirmed, artifactVersion, stage } = state;
+  const [copiedDocs, setCopiedDocs] = useState(false);
 
   if (!dossier) return null;
 
@@ -17,12 +18,55 @@ export const SealWorkspace: React.FC<{ state: AppState; dispatch: React.Dispatch
     dispatch({ type: 'APPROVE_ARTIFACT' });
   };
 
+  const handleCopyDocsPackage = () => {
+    const formattedDocsText = `# ${dossier.meta.workingTitle}
+*Cult of Psyche Production Package · Version ${artifactVersion}.0*
+
+## Logline & Editorial Promise
+${dossier.meta.logline}
+
+---
+
+## 1. Grounded Claim Ledger
+${dossier.claims.map(c => `- [${c.status.toUpperCase()}] ${c.text} (Sources: ${c.sourceIds.join(', ') || 'None'})`).join('\n')}
+
+---
+
+## 2. Lens Matrix
+${dossier.lenses.map(l => `### ${l.type.toUpperCase()}: ${l.title}\n${l.body}\nKey points: ${l.keyPoints.join('; ')}`).join('\n\n')}
+
+---
+
+## 3. Paced Production Script
+${dossier.script.map(s => `### ${s.section} [${s.tone}]\n${s.narration}\n*VISUAL:* ${s.visualCue}\n*CITATIONS:* ${s.sourceIds.join(', ')}`).join('\n\n')}
+
+---
+
+## 4. Title Concepts (Scored Rubric)
+${dossier.production.titles.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+---
+
+## 5. Thumbnail Prompts
+${dossier.production.thumbnails.map(th => `- ${th.concept} (Overlay: "${th.textOverlay}"): ${th.visualPrompt}`).join('\n')}
+
+---
+
+## 6. Shot List
+${dossier.production.shotList.map(sh => `- ${sh.timecode} | ${sh.visualIntent} (${sh.assetType})`).join('\n')}
+`;
+
+    navigator.clipboard.writeText(formattedDocsText);
+    setCopiedDocs(true);
+    setTimeout(() => setCopiedDocs(false), 3000);
+  };
+
   const handleDownload = () => {
     if (!canDownload) return;
 
     const exportPackage = {
-      prototype: true,
-      provider: "fixture",
+      prototype: false,
+      provider: state.providerMode,
       artifactVersion,
       reviewState,
       exportedAt: new Date().toISOString(),
@@ -45,7 +89,7 @@ export const SealWorkspace: React.FC<{ state: AppState; dispatch: React.Dispatch
         <ShieldCheck className="w-12 h-12 text-atelier-lilac mx-auto mb-3" />
         <h1 className="font-serif text-3xl text-atelier-paper">Production Seal</h1>
         <p className="text-sm text-atelier-paper/60 font-reading mt-1">
-          Final review gate before artifact packaging and JSON backup.
+          Final review gate before artifact packaging, Google Docs handoff, and JSON backup.
         </p>
       </div>
 
@@ -57,7 +101,7 @@ export const SealWorkspace: React.FC<{ state: AppState; dispatch: React.Dispatch
               Blocking Warnings Require Resolution
             </h3>
             <p className="text-xs text-atelier-paper/80 font-reading">
-              {blockingWarnings.length} unresolved blocking warning{blockingWarnings.length === 1 ? '' : 's'} remain in Marginalia. Use the "Resolve / Exclude" action in Marginalia to clear them before approval.
+              {blockingWarnings.length} unresolved blocking warning{blockingWarnings.length === 1 ? '' : 's'} remain in Marginalia. Clear them before approving this version.
             </p>
           </div>
         </div>
@@ -111,10 +155,10 @@ export const SealWorkspace: React.FC<{ state: AppState; dispatch: React.Dispatch
             </div>
             <div>
               <span className="text-sm font-ui font-medium text-atelier-paper group-hover:text-atelier-lilac transition-colors">
-                I reviewed this prototype package.
+                I reviewed this production package.
               </span>
               <p className="text-xs text-atelier-paper/50 font-reading mt-0.5">
-                I confirm that claims are properly sourced, lenses are separated, and the tone aligns with editorial standards.
+                I confirm that claims are properly sourced, lenses are separated, and the script aligns with editorial standards.
               </p>
             </div>
           </label>
@@ -122,21 +166,41 @@ export const SealWorkspace: React.FC<{ state: AppState; dispatch: React.Dispatch
 
         <div className="space-y-3 pt-2 border-t border-atelier-elevated">
           <h3 className="font-ui text-xs font-semibold uppercase tracking-wider text-atelier-lilac">
-            3. Export Execution
+            3. Export Packages
           </h3>
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={!canDownload}
-            className={`w-full py-3 rounded font-ui text-sm font-semibold tracking-wide transition flex items-center justify-center space-x-2 ${
-              canDownload 
-                ? 'bg-atelier-lilac text-atelier-bg hover:bg-[#C8B3FF] shadow-[0_0_20px_rgba(182,156,255,0.25)]' 
-                : 'bg-atelier-elevated text-atelier-paper/30 cursor-not-allowed'
-            }`}
-          >
-            <Download className="w-4 h-4" />
-            <span>Download Production JSON</span>
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={handleCopyDocsPackage}
+              className="py-3 px-4 rounded border border-atelier-elevated bg-atelier-bg hover:border-atelier-lilac text-xs font-ui text-atelier-paper flex items-center justify-center space-x-2 transition-colors"
+            >
+              {copiedDocs ? (
+                <>
+                  <Check className="w-4 h-4 text-atelier-teal" />
+                  <span className="text-atelier-teal font-semibold">Copied Google Docs Package!</span>
+                </>
+              ) : (
+                <>
+                  <FileText className="w-4 h-4 text-atelier-lilac" />
+                  <span>Copy Google Docs Package</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={!canDownload}
+              className={`py-3 px-4 rounded font-ui text-xs font-semibold tracking-wide transition flex items-center justify-center space-x-2 ${
+                canDownload 
+                  ? 'bg-atelier-lilac text-atelier-bg hover:bg-[#C8B3FF] shadow-[0_0_20px_rgba(182,156,255,0.25)]' 
+                  : 'bg-atelier-elevated text-atelier-paper/30 cursor-not-allowed'
+              }`}
+            >
+              <Download className="w-4 h-4" />
+              <span>Download Production JSON</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

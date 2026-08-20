@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppState, AppAction } from '../../app/workflowReducer';
 import { PrototypeNotice } from '../common/PrototypeNotice';
-import { Menu, BookOpen, AlertTriangle } from 'lucide-react';
+import { Menu, BookOpen } from 'lucide-react';
 
 export const Header: React.FC<{ state: AppState; dispatch: React.Dispatch<AppAction> }> = ({ state, dispatch }) => {
   const unresolvedBlocking = state.dossier?.warnings.filter(w => w.severity === 'blocking' && !w.resolved).length || 0;
@@ -22,7 +22,10 @@ export const Header: React.FC<{ state: AppState; dispatch: React.Dispatch<AppAct
 
         <div className="flex items-center space-x-2.5">
           <div 
-            className={`w-2.5 h-2.5 rounded-full ${state.isGenerating ? 'bg-atelier-lilac animate-pulse shadow-[0_0_8px_#B69CFF]' : 'bg-atelier-elevated'}`}
+            className={`w-2.5 h-2.5 rounded-full ${
+              state.isGenerating ? 'bg-atelier-lilac animate-pulse shadow-[0_0_8px_#B69CFF]' :
+              state.providerMode === 'live' ? 'bg-atelier-teal shadow-[0_0_6px_#55C2B3]' : 'bg-atelier-elevated'
+            }`}
             aria-hidden="true"
           />
           <div>
@@ -34,8 +37,12 @@ export const Header: React.FC<{ state: AppState; dispatch: React.Dispatch<AppAct
       </div>
 
       <div className="flex items-center space-x-2 md:space-x-4">
-        {/* Persistent Prototype Disclosure */}
-        <PrototypeNotice condensed={true} />
+        {/* Mode Selector & Disclosure */}
+        <PrototypeNotice 
+          mode={state.providerMode} 
+          onToggleMode={(mode) => dispatch({ type: 'SET_PROVIDER_MODE', payload: mode })}
+          condensed={true} 
+        />
 
         {/* Version & Review State Badges */}
         <div className="hidden sm:flex items-center space-x-2 text-xs font-mono">

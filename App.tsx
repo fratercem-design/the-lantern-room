@@ -1,16 +1,21 @@
-import React, { useReducer, useRef, useEffect } from 'react';
+import React, { useReducer, useRef, useEffect, useMemo } from 'react';
 import { workflowReducer, initialState } from './app/workflowReducer';
 import { FixtureDossierProvider } from './services/fixtureDossierProvider';
+import { RemoteDossierProvider } from './services/remoteDossierProvider';
 import { Header } from './components/shell/Header';
 import { Cabinet } from './components/shell/Cabinet';
 import { Worktable } from './components/shell/Worktable';
 import { Marginalia } from './components/shell/Marginalia';
 
-const provider = new FixtureDossierProvider(1000);
-
 export default function App() {
   const [state, dispatch] = useReducer(workflowReducer, initialState);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const provider = useMemo(() => {
+    return state.providerMode === 'live'
+      ? new RemoteDossierProvider()
+      : new FixtureDossierProvider(1000);
+  }, [state.providerMode]);
 
   const handleGenerate = async (topic: string) => {
     if (abortControllerRef.current) {
