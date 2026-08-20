@@ -22,6 +22,7 @@ EDITORIAL GUIDELINES:
 
 // Maximum input limits for production security
 const MAX_TOPIC_LENGTH = 1000;
+const MAX_PAYLOAD_BYTES = 50 * 1024; // 50 KB
 const REQUEST_TIMEOUT_MS = 28000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -33,7 +34,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // 2. Secret boundary check
+  // 2. Request payload size verification (50 KB limit)
+  const rawPayload = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+  const payloadBytes = Buffer.byteLength(rawPayload, 'utf8');
+  if (payloadBytes > MAX_PAYLOAD_BYTES) {
+    return res.status(413).json({
+      error: 'Request payload exceeds maximum allowed size of 50 KB.'
+    });
+  }
+
+  // 3. Secret boundary check
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res.status(500).json({
@@ -41,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // 3. Input validation & sanitization
+  // 4. Input validation & sanitization
   const body = req.body;
   if (!body || typeof body !== 'object') {
     return res.status(400).json({
@@ -63,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // 4. Invocation with timeout protection
+  // 5. Invocation with timeout protection wired to SDK
   const abortController = new AbortController();
   const timeoutId = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
 
@@ -88,7 +98,9 @@ Generate a complete LanternDossier JSON object conforming strictly to the reques
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         responseMimeType: "application/json",
-        tools: [{ googleSearch: {} }]
+        tools: [{ googleSearch: {} }],
+        abortSignal: abortController.signal,
+        httpOptions: { timeout: REQUEST_TIMEOUT_MS }
       }
     });
 
@@ -101,39 +113,91 @@ Generate a complete LanternDossier JSON object conforming strictly to the reques
 
     const rawData = JSON.parse(responseText);
 
-    // 5. Reconcile Google Search Grounding Metadata
+    // 6. Reconcile Google Search Grounding Metadata & Chunks
     const candidate = response.candidates?.[0];
     const groundingMetadata = (candidate as any)?.groundingMetadata;
 
     if (groundingMetadata && Array.isArray(groundingMetadata.groundingChunks)) {
-      const existingSourceUrls = new Set(
-        (rawData.sources || []).map((s: any) => s.url).filter(Boolean)
-      );
+      if (!Array.isArray(rawData.sources)) {
+        rawData.sources = [];
+      }
+
+      const existingSourceUrls = new Map<string, string>();
+      rawData.sources.forEach((s: any) => {
+        if (s.url) existingSourceUrls.set(s.url, s.id);
+      });
+
+      const existingIds = new Set(rawData.sources.map((s: any) => s.id));
+      const groundedChunkSourceMap: string[] = [];
 
       groundingMetadata.groundingChunks.forEach((chunk: any, index: number) => {
-        if (chunk.web?.uri && !existingSourceUrls.has(chunk.web.uri)) {
-          const newSourceId = `SRC-GND-${String(index + 1).padStart(2, '0')}`;
+        const uri = chunk.web?.uri;
+        if (!uri) return;
+
+        if (existingSourceUrls.has(uri)) {
+          // Upgrade existing model source to grounded state
+          const existingId = existingSourceUrls.get(uri)!;
+          const targetSource = rawData.sources.find((s: any) => s.id === existingId);
+          if (targetSource) {
+            targetSource.verificationState = "grounded";
+          }
+          groundedChunkSourceMap[index] = existingId;
+        } else {
+          // Generate collision-safe ID
+          let sourceIndex = index + 1;
+          let newSourceId = `SRC-GND-${String(sourceIndex).padStart(2, '0')}`;
+          while (existingIds.has(newSourceId)) {
+            sourceIndex++;
+            newSourceId = `SRC-GND-${String(sourceIndex).padStart(2, '0')}`;
+          }
+          existingIds.add(newSourceId);
+          existingSourceUrls.set(uri, newSourceId);
+          groundedChunkSourceMap[index] = newSourceId;
+
+          let host = "web";
+          try {
+            host = new URL(uri).hostname;
+          } catch (_) {}
+
           const groundedSource: Source = {
             id: newSourceId,
-            title: chunk.web.title || `Web Source (${new URL(chunk.web.uri).hostname})`,
+            title: chunk.web.title || `Web Source (${host})`,
             sourceType: "web",
-            citation: `Retrieved via Google Search Grounding: ${chunk.web.uri}`,
-            url: chunk.web.uri,
+            citation: `Retrieved via Google Search Grounding: ${uri}`,
+            url: uri,
             credibilityScore: 4,
-            keyPoints: ["Verified via live Google Search grounding."],
+            keyPoints: ["Retrieved and verified via live Google Search grounding."],
             verificationState: "grounded"
           };
 
-          if (!Array.isArray(rawData.sources)) {
-            rawData.sources = [];
-          }
           rawData.sources.push(groundedSource);
-          existingSourceUrls.add(chunk.web.uri);
         }
       });
+
+      // Map grounding supports to claims if available
+      if (Array.isArray(groundingMetadata.groundingSupports) && Array.isArray(rawData.claims)) {
+        groundingMetadata.groundingSupports.forEach((support: any) => {
+          const chunkIndices = support.groundingChunkIndices || [];
+          const matchedSourceIds = chunkIndices
+            .map((i: number) => groundedChunkSourceMap[i])
+            .filter(Boolean);
+
+          if (matchedSourceIds.length > 0 && support.segment?.text) {
+            const segmentText = support.segment.text.toLowerCase();
+            rawData.claims.forEach((claim: any) => {
+              if (claim.text && (claim.text.toLowerCase().includes(segmentText) || segmentText.includes(claim.text.toLowerCase()))) {
+                claim.sourceIds = Array.from(new Set([...(claim.sourceIds || []), ...matchedSourceIds]));
+                if (claim.status === 'needs-source') {
+                  claim.status = 'supported';
+                }
+              }
+            });
+          }
+        });
+      }
     }
 
-    // 6. Validate with canonical Zod schema
+    // 7. Validate with canonical Zod schema
     const validatedDossier: LanternDossier = lanternDossierSchema.parse(rawData);
 
     return res.status(200).json(validatedDossier);

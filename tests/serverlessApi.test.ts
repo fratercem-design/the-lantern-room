@@ -1,5 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import handler from '../api/dossiers';
+import { fixtureDossier } from '../fixtures/lanternDossier.fixture';
+import { GoogleGenAI } from '@google/genai';
+
+vi.mock('@google/genai');
 
 function createMockReqRes(options: { method: string; body?: any }) {
   const req: any = {
@@ -28,10 +32,11 @@ function createMockReqRes(options: { method: string; body?: any }) {
 
 describe('Serverless /api/dossiers API Route', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     delete process.env.GEMINI_API_KEY;
   });
 
-  it('rejects GET requests with 405 Method Not Allowed', async () => {
+  it('rejects GET requests with 405 Method Not Allowed and sets Allow header', async () => {
     const { req, res } = createMockReqRes({ method: 'GET' });
     await handler(req, res);
 
@@ -65,5 +70,87 @@ describe('Serverless /api/dossiers API Route', () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.jsonData.error).toContain('exceeds maximum allowed length');
+  });
+
+  it('returns 413 Payload Too Large when request body exceeds 50 KB', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    const hugePayload = {
+      topic: 'Valid topic',
+      format: 'x'.repeat(55 * 1024)
+    };
+    const { req, res } = createMockReqRes({ method: 'POST', body: hugePayload });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(413);
+    expect(res.jsonData.error).toContain('Request payload exceeds maximum allowed size of 50 KB');
+  });
+
+  it('returns 504 Gateway Timeout when Gemini request aborts or times out', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    
+    const mockGenerateContent = vi.fn().mockImplementation(() => {
+      const error: any = new Error('The operation was aborted');
+      error.name = 'AbortError';
+      return Promise.reject(error);
+    });
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: {
+        generateContent: mockGenerateContent
+      }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Gnosticism timeout test' } });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(504);
+    expect(res.jsonData.error).toContain('timed out');
+  });
+
+  it('successfully parses mocked Gemini response and reconciles grounding chunks', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockGenerateContent = vi.fn().mockResolvedValue({
+      text: JSON.stringify(fixtureDossier),
+      candidates: [
+        {
+          groundingMetadata: {
+            groundingChunks: [
+              {
+                web: {
+                  uri: 'https://example.com/gnostic-archaeology',
+                  title: 'Nag Hammadi Library Overview'
+                }
+              }
+            ],
+            groundingSupports: [
+              {
+                groundingChunkIndices: [0],
+                segment: {
+                  text: 'Nag Hammadi'
+                }
+              }
+            ]
+          }
+        }
+      ]
+    });
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: {
+        generateContent: mockGenerateContent
+      }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Nag Hammadi Gnosticism' } });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.jsonData.meta.projectId).toBe(fixtureDossier.meta.projectId);
+
+    // Verify grounding chunk reconciliation
+    const groundedSource = res.jsonData.sources.find((s: any) => s.url === 'https://example.com/gnostic-archaeology');
+    expect(groundedSource).toBeDefined();
+    expect(groundedSource.verificationState).toBe('grounded');
   });
 });
