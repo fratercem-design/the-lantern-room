@@ -17,9 +17,10 @@ describe('LIVE Hugging Face dossier generation', () => {
     const token = fs.readFileSync(path.join(os.homedir(), '.cache/huggingface/token'), 'utf8').trim();
     const model = process.env.HF_DOSSIER_MODEL || 'zai-org/GLM-5.3-Flash';
 
+    const topic = process.env.LANTERN_TOPIC || 'The Cathars and the Albigensian Crusade';
     const prompt = `
 Conduct an in-depth, cited research synthesis for Cult of Psyche on the topic:
-"The Cathars and the Albigensian Crusade"
+"${topic}"
 
 Target Format: 20-30 min Deep Dive
 Intended Tone: Academic-Occult / Darkly Inquisitive
@@ -54,7 +55,7 @@ ${DOSSIER_JSON_CONTRACT}
     console.log(`\n[live] model=${model} elapsed=${elapsed}s usage=${JSON.stringify(data.usage)}`);
     console.log(`[live] raw chars=${text.length}`);
 
-    fs.writeFileSync('live-raw.json', text);
+    fs.writeFileSync(process.env.LANTERN_OUT || 'live-raw.json', text);
 
     const raw = extractJsonObject(text);
     expect(raw, 'extractJsonObject returned null').not.toBeNull();
