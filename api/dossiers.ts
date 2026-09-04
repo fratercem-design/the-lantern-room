@@ -6,6 +6,10 @@ import {
   extractJsonObject,
   normalizeDossierCandidate
 } from '../shared/dossierContract.js';
+import {
+  generateWithHuggingFace,
+  stripFalseGrounding
+} from '../shared/hfDossierClient.js';
 
 const SYSTEM_INSTRUCTION = `
 You are the Lead Researcher and Editorial Atelier for "Cult of Psyche", an intellectual, darkly inquisitive YouTube channel and production atelier.
@@ -31,7 +35,10 @@ const MAX_PAYLOAD_BYTES = 50 * 1024; // 50 KB
 // Must stay comfortably under the function's maxDuration in vercel.json (60s)
 // so that our own abort produces a clean JSON 504 rather than the platform
 // killing the invocation and returning its own error page.
-const REQUEST_TIMEOUT_MS = 52000;
+const REQUEST_TIMEOUT_MS = 280000;
+// A live GLM-5.3-Flash run produced a valid dossier in 104s / 15.3k completion
+// tokens, so the old 52s ceiling was not survivable. Keep headroom over that.
+const HF_MAX_TOKENS = 32000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 1. Method verification
@@ -86,6 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const timeoutId = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
 
   try {
+    const provider = (process.env.DOSSIER_PROVIDER || 'gemini').toLowerCase();
     const ai = new GoogleGenAI({ apiKey });
     // gemini-2.5-flash is retired for new users and 404s at the API before
     // any config is validated. Google's own error names 3.6-flash as the
@@ -104,6 +112,43 @@ Generate a complete LanternDossier JSON object conforming strictly to the schema
 
 ${DOSSIER_JSON_CONTRACT}
 `;
+
+    if (provider === 'huggingface') {
+      const hfToken = process.env.HF_TOKEN;
+      if (!hfToken) {
+        clearTimeout(timeoutId);
+        return res.status(500).json({
+          error: 'HF_TOKEN environment variable is not configured on the server.'
+        });
+      }
+
+      const hfModel = process.env.HF_DOSSIER_MODEL || 'zai-org/GLM-5.3-Flash';
+      const hf = await generateWithHuggingFace({
+        token: hfToken,
+        model: hfModel,
+        systemInstruction: SYSTEM_INSTRUCTION,
+        prompt,
+        maxTokens: HF_MAX_TOKENS,
+        signal: abortController.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (hf.truncated) {
+        throw new Error('Model output was truncated before the dossier was complete.');
+      }
+
+      const hfRaw = extractJsonObject(hf.text) as any;
+      if (!hfRaw) {
+        throw new Error('Hugging Face response did not contain a parseable JSON dossier.');
+      }
+
+      // No grounding exists on this path, so no source may claim it.
+      const hfNormalized = normalizeDossierCandidate(
+        stripFalseGrounding(hfRaw, `Hugging Face (${hfModel})`)
+      );
+      const hfDossier: LanternDossier = lanternDossierSchema.parse(hfNormalized);
+      return res.status(200).json(hfDossier);
+    }
 
     // NOTE: `responseMimeType: "application/json"` must NOT be set here.
     // Gemini 2.5 rejects any tool + JSON mime type combination outright
