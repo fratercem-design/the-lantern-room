@@ -153,4 +153,90 @@ describe('Serverless /api/dossiers API Route', () => {
     expect(groundedSource).toBeDefined();
     expect(groundedSource.verificationState).toBe('grounded');
   });
+  it('does NOT send responseMimeType alongside the googleSearch tool', async () => {
+    // Regression guard. Gemini 2.5 rejects this combination outright with
+    // "<tool> with a response mime type: 'application/json' is unsupported",
+    // which produced a sub-second 500 on every live request in production
+    // while every mocked test stayed green.
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockGenerateContent = vi.fn().mockResolvedValue({
+      text: JSON.stringify(fixtureDossier),
+      candidates: []
+    });
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: { generateContent: mockGenerateContent }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Config contract' } });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    const sentConfig = mockGenerateContent.mock.calls[0][0].config;
+    expect(sentConfig.tools).toEqual([{ googleSearch: {} }]);
+    expect(sentConfig.responseMimeType).toBeUndefined();
+    expect(sentConfig.responseSchema).toBeUndefined();
+  });
+
+  it('transmits the JSON shape contract to the model in the prompt', async () => {
+    // The prompt used to say "conforming strictly to the requested schema"
+    // while never actually sending a schema.
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockGenerateContent = vi.fn().mockResolvedValue({
+      text: JSON.stringify(fixtureDossier),
+      candidates: []
+    });
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: { generateContent: mockGenerateContent }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Contract transmission' } });
+    await handler(req, res);
+
+    const contents = mockGenerateContent.mock.calls[0][0].contents as string;
+    expect(contents).toContain('"credibilityScore": integer 1-5');
+    expect(contents).toContain('HARD CONSTRAINTS');
+    expect(contents).toContain('Contract transmission');
+  });
+
+  it('recovers a dossier from a fenced, prose-wrapped model response', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockGenerateContent = vi.fn().mockResolvedValue({
+      text: ['Certainly. Here is the dossier:', '', '```json', JSON.stringify(fixtureDossier), '```', ''].join(String.fromCharCode(10)),
+      candidates: []
+    });
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: { generateContent: mockGenerateContent }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Fenced output' } });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.jsonData.meta.projectId).toBe(fixtureDossier.meta.projectId);
+  });
+
+  it('returns a sanitized 500 when the model returns no JSON at all', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockGenerateContent = vi.fn().mockResolvedValue({
+      text: 'I was unable to complete that research request.',
+      candidates: []
+    });
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: { generateContent: mockGenerateContent }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Refusal path' } });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.jsonData.error).toBe('An error occurred during research synthesis. Please try again.');
+  });
 });

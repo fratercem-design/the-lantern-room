@@ -1,6 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI } from '@google/genai';
 import { lanternDossierSchema, LanternDossier, Source } from '../shared/lanternSchema.js';
+import {
+  DOSSIER_JSON_CONTRACT,
+  extractJsonObject,
+  normalizeDossierCandidate
+} from '../shared/dossierContract.js';
 
 const SYSTEM_INSTRUCTION = `
 You are the Lead Researcher and Editorial Atelier for "Cult of Psyche", an intellectual, darkly inquisitive YouTube channel and production atelier.
@@ -23,7 +28,10 @@ EDITORIAL GUIDELINES:
 // Maximum input limits for production security
 const MAX_TOPIC_LENGTH = 1000;
 const MAX_PAYLOAD_BYTES = 50 * 1024; // 50 KB
-const REQUEST_TIMEOUT_MS = 28000;
+// Must stay comfortably under the function's maxDuration in vercel.json (60s)
+// so that our own abort produces a clean JSON 504 rather than the platform
+// killing the invocation and returning its own error page.
+const REQUEST_TIMEOUT_MS = 52000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 1. Method verification
@@ -89,15 +97,22 @@ Target Format: ${format || "20-30 min Deep Dive"}
 Intended Tone: ${tone || "Academic-Occult / Darkly Inquisitive"}
 Audience Level: ${audience || "Familiar with esoteric & psychological concepts"}
 
-Generate a complete LanternDossier JSON object conforming strictly to the requested schema.
+Generate a complete LanternDossier JSON object conforming strictly to the schema below.
+
+${DOSSIER_JSON_CONTRACT}
 `;
 
+    // NOTE: `responseMimeType: "application/json"` must NOT be set here.
+    // Gemini 2.5 rejects any tool + JSON mime type combination outright
+    // ("<tool> with a response mime type: 'application/json' is unsupported"),
+    // and structured output alongside Search grounding is Gemini 3 only.
+    // Grounding is the more valuable half, so the JSON contract is carried in
+    // the prompt and enforced on the way back instead.
     const response = await ai.models.generateContent({
       model,
       contents: prompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
         tools: [{ googleSearch: {} }],
         abortSignal: abortController.signal,
         httpOptions: { timeout: REQUEST_TIMEOUT_MS }
@@ -111,7 +126,10 @@ Generate a complete LanternDossier JSON object conforming strictly to the reques
       throw new Error('Received empty response from Gemini API.');
     }
 
-    const rawData = JSON.parse(responseText);
+    const rawData = extractJsonObject(responseText) as any;
+    if (!rawData) {
+      throw new Error('Gemini response did not contain a parseable JSON dossier.');
+    }
 
     // 6. Reconcile Google Search Grounding Metadata & Chunks
     const candidate = response.candidates?.[0];
@@ -182,10 +200,18 @@ Generate a complete LanternDossier JSON object conforming strictly to the reques
             .map((i: number) => groundedChunkSourceMap[i])
             .filter(Boolean);
 
+          // Short segments match almost any claim by substring, which would
+          // attach grounded sources to unrelated text; require enough
+          // characters for the overlap to mean something.
+          const MIN_SEGMENT_MATCH_CHARS = 24;
           if (matchedSourceIds.length > 0 && support.segment?.text) {
             const segmentText = support.segment.text.toLowerCase();
             rawData.claims.forEach((claim: any) => {
-              if (claim.text && (claim.text.toLowerCase().includes(segmentText) || segmentText.includes(claim.text.toLowerCase()))) {
+              if (!claim.text) return;
+              const claimText = claim.text.toLowerCase();
+              const overlap = Math.min(segmentText.length, claimText.length);
+              if (overlap < MIN_SEGMENT_MATCH_CHARS) return;
+              if (claimText.includes(segmentText) || segmentText.includes(claimText)) {
                 claim.sourceIds = Array.from(new Set([...(claim.sourceIds || []), ...matchedSourceIds]));
                 if (claim.status === 'needs-source') {
                   claim.status = 'supported';
@@ -197,8 +223,11 @@ Generate a complete LanternDossier JSON object conforming strictly to the reques
       }
     }
 
-    // 7. Validate with canonical Zod schema
-    const validatedDossier: LanternDossier = lanternDossierSchema.parse(rawData);
+    // 7. Deterministically repair near-miss output, then validate with the
+    //    canonical Zod schema. Normalization runs after grounding so that
+    //    grounded source IDs are already present.
+    const normalized = normalizeDossierCandidate(rawData);
+    const validatedDossier: LanternDossier = lanternDossierSchema.parse(normalized);
 
     return res.status(200).json(validatedDossier);
   } catch (error: any) {
