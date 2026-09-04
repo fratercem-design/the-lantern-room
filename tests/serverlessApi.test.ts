@@ -239,4 +239,45 @@ describe('Serverless /api/dossiers API Route', () => {
     expect(res.statusCode).toBe(500);
     expect(res.jsonData.error).toBe('An error occurred during research synthesis. Please try again.');
   });
+  it('surfaces an upstream 429 as 429, not a generic 500', async () => {
+    // Depleted Gemini credits used to be indistinguishable from a code bug.
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockGenerateContent = vi.fn().mockImplementation(() => {
+      const error: any = new Error('{"error":{"code":429,"message":"Your prepayment credits are depleted."}}');
+      error.status = 429;
+      return Promise.reject(error);
+    });
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: { generateContent: mockGenerateContent }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Quota path' } });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(429);
+    expect(res.jsonData.error).toContain('quota or credits');
+    expect(res.jsonData.error).not.toContain('prepayment');
+  });
+
+  it('surfaces a retired-model 404 as 503 naming the override', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockGenerateContent = vi.fn().mockImplementation(() => {
+      const error: any = new Error('This model models/gemini-2.5-flash is no longer available to new users.');
+      error.status = 404;
+      return Promise.reject(error);
+    });
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: { generateContent: mockGenerateContent }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Retired model path' } });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(503);
+    expect(res.jsonData.error).toContain('GEMINI_DOSSIER_MODEL');
+  });
 });

@@ -238,13 +238,30 @@ ${DOSSIER_JSON_CONTRACT}
     console.error('Dossier generation error:', error);
 
     // Sanitize production error responses
+    // Distinguish the failure modes an operator can actually act on. A
+    // depleted-credits 429 and a retired-model 404 both used to surface as a
+    // generic 500, which left "is this billing or a bug?" unanswerable from
+    // the outside. None of these leak the key or the upstream payload.
     const isAbort = error.name === 'AbortError' || abortController.signal.aborted;
-    const statusCode = isAbort ? 504 : 500;
-    const userMessage = isAbort
-      ? 'Request timed out while contacting Gemini research services.'
-      : (error.message && error.message.includes('API key'))
-        ? 'Invalid or unauthorized GEMINI_API_KEY.'
-        : 'An error occurred during research synthesis. Please try again.';
+    const upstreamStatus = typeof error.status === 'number' ? error.status : undefined;
+    const message = typeof error.message === 'string' ? error.message : '';
+
+    let statusCode = 500;
+    let userMessage = 'An error occurred during research synthesis. Please try again.';
+
+    if (isAbort) {
+      statusCode = 504;
+      userMessage = 'Request timed out while contacting Gemini research services.';
+    } else if (upstreamStatus === 429) {
+      statusCode = 429;
+      userMessage = 'Research capacity is temporarily unavailable (upstream quota or credits exhausted). Try again later.';
+    } else if (upstreamStatus === 404 && message.includes('model')) {
+      statusCode = 503;
+      userMessage = 'The configured research model is unavailable. Set GEMINI_DOSSIER_MODEL to a supported model.';
+    } else if (message.includes('API key')) {
+      statusCode = 500;
+      userMessage = 'Invalid or unauthorized GEMINI_API_KEY.';
+    }
 
     return res.status(statusCode).json({
       error: userMessage
