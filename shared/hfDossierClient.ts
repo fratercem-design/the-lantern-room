@@ -38,7 +38,12 @@ export async function generateWithHuggingFace(opts: {
       ],
       response_format: { type: 'json_object' },
       max_tokens: opts.maxTokens,
-      temperature: 0.7
+      temperature: 0.7,
+      // Streaming is not a nicety here. A non-streamed dossier takes 1-2
+      // minutes to generate, and the HF router closes the connection with its
+      // own 504 Gateway Time-out before the first byte arrives. Streaming keeps
+      // data flowing so the gateway never idles out.
+      stream: true
     }),
     signal: opts.signal
   });
@@ -50,11 +55,47 @@ export async function generateWithHuggingFace(opts: {
     throw error;
   }
 
-  const data: any = await response.json();
-  const choice = data?.choices?.[0];
-  const text = choice?.message?.content;
+  if (!response.body) {
+    throw new Error('Hugging Face router returned no response body.');
+  }
 
-  if (typeof text !== 'string' || !text) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let text = '';
+  let finishReason: string | undefined;
+  let usage: unknown;
+
+  // Server-sent events: "data: {json}" lines, terminated by "data: [DONE]".
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+
+      try {
+        const chunk = JSON.parse(payload);
+        const choice = chunk?.choices?.[0];
+        const delta = choice?.delta?.content;
+        if (typeof delta === 'string') text += delta;
+        if (choice?.finish_reason) finishReason = choice.finish_reason;
+        if (chunk?.usage) usage = chunk.usage;
+      } catch {
+        // A partial frame; the next read completes it.
+      }
+    }
+  }
+
+  if (!text) {
     throw new Error('Received empty response from Hugging Face router.');
   }
 
@@ -62,8 +103,8 @@ export async function generateWithHuggingFace(opts: {
   // is far more useful than the generic "no parseable JSON" that follows.
   return {
     text,
-    truncated: choice?.finish_reason === 'length',
-    usage: data?.usage
+    truncated: finishReason === 'length',
+    usage
   };
 }
 

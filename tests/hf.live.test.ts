@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DOSSIER_JSON_CONTRACT, extractJsonObject, normalizeDossierCandidate } from '../shared/dossierContract';
+import { generateWithHuggingFace, stripFalseGrounding } from '../shared/hfDossierClient';
 import { lanternDossierSchema } from '../shared/lanternSchema';
 
 const SYSTEM_INSTRUCTION = `
@@ -13,11 +14,11 @@ Provide five distinct lenses, three distinct episode shapes, 10 scored titles, a
 `;
 
 describe('LIVE Hugging Face dossier generation', () => {
-  it('produces a dossier that passes the canonical Zod schema', async () => {
+  it('streams a dossier that passes the canonical Zod schema', async () => {
     const token = fs.readFileSync(path.join(os.homedir(), '.cache/huggingface/token'), 'utf8').trim();
     const model = process.env.HF_DOSSIER_MODEL || 'zai-org/GLM-5.3-Flash';
-
     const topic = process.env.LANTERN_TOPIC || 'The Cathars and the Albigensian Crusade';
+
     const prompt = `
 Conduct an in-depth, cited research synthesis for Cult of Psyche on the topic:
 "${topic}"
@@ -32,46 +33,35 @@ ${DOSSIER_JSON_CONTRACT}
 `;
 
     const started = Date.now();
-    const res = await fetch('https://router.huggingface.co/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: SYSTEM_INSTRUCTION },
-          { role: 'user', content: prompt }
-        ],
-        response_format: { type: 'json_object' },
-        max_tokens: 16000,
-        temperature: 0.7
-      })
+    const result = await generateWithHuggingFace({
+      token,
+      model,
+      systemInstruction: SYSTEM_INSTRUCTION,
+      prompt,
+      maxTokens: 32000,
+      signal: AbortSignal.timeout(280000)
     });
-
     const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-    expect(res.status, `HTTP ${res.status}: ${await res.clone().text()}`).toBe(200);
 
-    const data: any = await res.json();
-    const text: string = data.choices[0].message.content;
-    console.log(`\n[live] model=${model} elapsed=${elapsed}s usage=${JSON.stringify(data.usage)}`);
-    console.log(`[live] raw chars=${text.length}`);
+    console.log(`\n[live] STREAMED model=${model} elapsed=${elapsed}s chars=${result.text.length} truncated=${result.truncated}`);
+    expect(result.truncated).toBe(false);
 
-    fs.writeFileSync(process.env.LANTERN_OUT || 'live-raw.json', text);
+    fs.writeFileSync(process.env.LANTERN_OUT || 'live-raw.json', result.text);
 
-    const raw = extractJsonObject(text);
+    const raw = extractJsonObject(result.text);
     expect(raw, 'extractJsonObject returned null').not.toBeNull();
 
-    const normalized = normalizeDossierCandidate(raw);
-    const result = lanternDossierSchema.safeParse(normalized);
+    const processed = normalizeDossierCandidate(stripFalseGrounding(raw, `Hugging Face (${model})`));
+    const parsed = lanternDossierSchema.safeParse(processed);
 
-    if (!result.success) {
+    if (!parsed.success) {
       console.log('[live] ZOD FAILURES:');
-      result.error.issues.slice(0, 25).forEach(i =>
-        console.log(`  ${i.path.join('.')} :: ${i.message}`)
-      );
+      parsed.error.issues.slice(0, 25).forEach(i => console.log(`  ${i.path.join('.')} :: ${i.message}`));
     } else {
-      const d: any = result.data;
+      const d: any = parsed.data;
       console.log(`[live] VALID. sources=${d.sources.length} claims=${d.claims.length} lenses=${d.lenses.length} shapes=${d.shapes.length} script=${d.script.length} titles=${d.production.titles.length} thumbs=${d.production.thumbnails.length}`);
+      console.log(`[live] warning[0]=${d.warnings[0]?.id} grounded_sources=${d.sources.filter((s: any) => s.verificationState === 'grounded').length}`);
     }
-    expect(result.success).toBe(true);
+    expect(parsed.success).toBe(true);
   }, 300000);
 });
