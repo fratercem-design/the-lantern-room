@@ -87,7 +87,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const model = process.env.GEMINI_DOSSIER_MODEL || 'gemini-2.5-flash';
+    // gemini-2.5-flash is retired for new users and 404s at the API before
+    // any config is validated. Google's own error names 3.6-flash as the
+    // replacement. Overridable via GEMINI_DOSSIER_MODEL.
+    const model = process.env.GEMINI_DOSSIER_MODEL || 'gemini-3.6-flash';
 
     const prompt = `
 Conduct an in-depth, cited research synthesis for Cult of Psyche on the topic:
