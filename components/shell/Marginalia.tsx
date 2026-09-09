@@ -109,7 +109,7 @@ export const Marginalia: React.FC<{ state: AppState; dispatch: React.Dispatch<Ap
                     <div key={src.id} className="p-3 rounded border border-atelier-elevated bg-atelier-surface text-xs space-y-2">
                       <div className="flex justify-between items-center">
                         <span className="font-mono text-atelier-lilac text-[10px]">[{src.id}]</span>
-                        <StatusBadge status="fixture" />
+                        <StatusBadge status={src.verificationState} />
                       </div>
                       <h4 className="font-serif text-atelier-paper font-semibold text-xs leading-snug">
                         {src.title}

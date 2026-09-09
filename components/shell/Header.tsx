@@ -42,6 +42,8 @@ export const Header: React.FC<{ state: AppState; dispatch: React.Dispatch<AppAct
           mode={state.providerMode} 
           onToggleMode={(mode) => dispatch({ type: 'SET_PROVIDER_MODE', payload: mode })}
           condensed={true} 
+          engine={state.dossier?.meta.engine}
+          grounded={state.dossier?.meta.grounded}
         />
 
         {/* Version & Review State Badges */}

@@ -40,6 +40,21 @@ const REQUEST_TIMEOUT_MS = 280000;
 // tokens, so the old 52s ceiling was not survivable. Keep headroom over that.
 const HF_MAX_TOKENS = 32000;
 
+/**
+ * Overwrites the provenance fields the model is not entitled to assert.
+ * A live run returned generatedAt "2025-01-15T09:30:00Z" -- a plausible,
+ * confident, wrong date. Whether the dossier was grounded is likewise a fact
+ * about how the server called out, not something the model can know.
+ */
+function stampProvenance(data: any, engine: string, grounded: boolean): any {
+  if (!data || typeof data !== 'object') return data;
+  if (!data.meta || typeof data.meta !== 'object') data.meta = {};
+  data.meta.generatedAt = new Date().toISOString();
+  data.meta.engine = engine;
+  data.meta.grounded = grounded;
+  return data;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 1. Method verification
   if (req.method !== 'POST') {
@@ -144,7 +159,11 @@ ${DOSSIER_JSON_CONTRACT}
 
       // No grounding exists on this path, so no source may claim it.
       const hfNormalized = normalizeDossierCandidate(
-        stripFalseGrounding(hfRaw, `Hugging Face (${hfModel})`)
+        stampProvenance(
+          stripFalseGrounding(hfRaw, `Hugging Face (${hfModel})`),
+          `Hugging Face · ${hfModel}`,
+          false
+        )
       );
       const hfDossier: LanternDossier = lanternDossierSchema.parse(hfNormalized);
       return res.status(200).json(hfDossier);
@@ -274,7 +293,9 @@ ${DOSSIER_JSON_CONTRACT}
     // 7. Deterministically repair near-miss output, then validate with the
     //    canonical Zod schema. Normalization runs after grounding so that
     //    grounded source IDs are already present.
-    const normalized = normalizeDossierCandidate(rawData);
+    const normalized = normalizeDossierCandidate(
+      stampProvenance(rawData, `Google Gemini · ${model}`, true)
+    );
     const validatedDossier: LanternDossier = lanternDossierSchema.parse(normalized);
 
     return res.status(200).json(validatedDossier);

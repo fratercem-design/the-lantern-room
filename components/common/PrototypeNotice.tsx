@@ -6,10 +6,24 @@ export const PrototypeNotice: React.FC<{
   mode: ProviderMode; 
   onToggleMode?: (mode: ProviderMode) => void;
   condensed?: boolean;
-}> = ({ mode, onToggleMode, condensed = false }) => {
+  /** Server-stamped engine label, e.g. "Hugging Face - GLM-5.3-Flash". */
+  engine?: string;
+  /** Whether the last dossier was actually search-grounded. */
+  grounded?: boolean;
+}> = ({ mode, onToggleMode, condensed = false, engine, grounded }) => {
   const [openModal, setOpenModal] = useState(false);
 
   const isLive = mode === 'live';
+  // Only the server knows which engine ran and whether it grounded. Until a
+  // dossier says so, claim nothing.
+  const liveLabel = grounded === true
+    ? 'Live - Search Grounded'
+    : grounded === false
+      ? 'Live - Ungrounded'
+      : 'Live - Model Synthesis';
+  const engineLine = engine
+    ? `${engine}${grounded === false ? ' (no search grounding)' : ''}`
+    : 'Live model synthesis';
 
   if (condensed) {
     return (
@@ -18,16 +32,20 @@ export const PrototypeNotice: React.FC<{
           type="button"
           onClick={() => setOpenModal(!openModal)}
           className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full border text-xs font-mono transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-atelier-lilac ${
-            isLive 
+            isLive && grounded !== false
               ? 'border-atelier-teal/40 bg-atelier-teal/10 text-atelier-teal hover:bg-atelier-teal/20'
+              : isLive
+              ? 'border-atelier-gold/40 bg-atelier-gold/10 text-atelier-gold hover:bg-atelier-gold/20'
               : 'border-atelier-lilac/40 bg-atelier-surface text-atelier-lilac hover:bg-atelier-lilac/10'
           }`}
           aria-label="View engine mode and provenance information"
         >
           {isLive ? (
             <>
-              <Globe className="w-3.5 h-3.5 text-atelier-teal animate-pulse" />
-              <span>Live · Google Search Grounded</span>
+              {grounded === false
+                ? <Cpu className="w-3.5 h-3.5 text-atelier-gold" />
+                : <Globe className="w-3.5 h-3.5 text-atelier-teal animate-pulse" />}
+              <span>{liveLabel}</span>
             </>
           ) : (
             <>
@@ -79,7 +97,7 @@ export const PrototypeNotice: React.FC<{
                       : 'border-atelier-elevated text-atelier-paper/60 hover:text-atelier-paper'
                   }`}
                 >
-                  Live Gemini
+                  Live Engine
                 </button>
               </div>
             )}
@@ -93,7 +111,7 @@ export const PrototypeNotice: React.FC<{
     <div className="p-3 rounded border border-atelier-elevated bg-atelier-surface/80 flex items-start space-x-3 text-xs">
       <Info className="w-4 h-4 text-atelier-lilac shrink-0 mt-0.5" />
       <div className="text-atelier-paper/80 font-reading leading-relaxed">
-        <strong className="text-atelier-lilac font-ui">Engine:</strong> {isLive ? 'Live Gemini Grounding Active' : 'Curated Demonstration Fixture'}
+        <strong className="text-atelier-lilac font-ui">Engine:</strong> {isLive ? engineLine : 'Curated Demonstration Fixture'}
       </div>
     </div>
   );
