@@ -104,6 +104,7 @@ export const lanternDossierSchema = z.object({
     generatedAt: z.string(),
     targetFormat: z.string().optional(),
     tone: z.string().optional(),
+    researchTopic: z.string().optional(),
     // Server-stamped, never model-supplied: the model invents plausible values
     // for these (a live run returned generatedAt "2025-01-15").
     engine: z.string().optional(),

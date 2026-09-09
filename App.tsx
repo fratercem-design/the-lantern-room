@@ -10,6 +10,7 @@ import { Marginalia } from './components/shell/Marginalia';
 export default function App() {
   const [state, dispatch] = useReducer(workflowReducer, initialState);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const lastTopicRef = useRef('');
 
   const provider = useMemo(() => {
     return state.providerMode === 'live'
@@ -18,6 +19,7 @@ export default function App() {
   }, [state.providerMode]);
 
   const handleGenerate = async (topic: string) => {
+    lastTopicRef.current = topic;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -75,7 +77,7 @@ export default function App() {
           state={state} 
           dispatch={dispatch} 
           onCancel={handleCancel}
-          onRetry={() => handleGenerate("Why do charismatic communities confuse intensity with intimacy?")}
+          onRetry={() => handleGenerate(lastTopicRef.current)}
         />
 
         {/* Desktop Marginalia */}

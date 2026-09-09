@@ -7,6 +7,15 @@ interface ErrorStateProps {
 }
 
 export const ErrorState: React.FC<ErrorStateProps> = ({ message, onRetry }) => {
+  const isQuota = /quota|credits|capacity/i.test(message);
+  const isTopicMismatch = /aligned with the requested research topic/i.test(message);
+  const title = isQuota ? 'Research Capacity Unavailable' : isTopicMismatch ? 'Topic Alignment Failed' : 'Synthesis Disrupted';
+  const guidance = isQuota
+    ? 'The model could not accept this request right now. Wait a moment and try again.'
+    : isTopicMismatch
+      ? 'The returned draft did not stay focused on your research question. Try the same topic again.'
+      : undefined;
+
   return (
     <div 
       role="alert" 
@@ -15,8 +24,9 @@ export const ErrorState: React.FC<ErrorStateProps> = ({ message, onRetry }) => {
     >
       <div className="text-center max-w-md p-6 border border-atelier-carmine/40 bg-atelier-surface rounded-lg shadow-xl space-y-4">
         <AlertTriangle className="w-10 h-10 text-atelier-carmine mx-auto" />
-        <h2 className="text-atelier-carmine font-serif text-xl">Synthesis Disrupted</h2>
+        <h2 className="text-atelier-carmine font-serif text-xl">{title}</h2>
         <p className="text-atelier-paper/80 text-sm font-ui leading-relaxed">{message}</p>
+        {guidance && <p className="text-atelier-paper/60 text-xs font-ui leading-relaxed">{guidance}</p>}
         {onRetry && (
           <button
             onClick={onRetry}

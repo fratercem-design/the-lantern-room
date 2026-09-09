@@ -83,7 +83,7 @@ describe('provenance is server-stamped, not model-asserted', () => {
       status(c: number) { this.statusCode = c; return this; },
       json(d: any) { this.jsonData = d; return this; }
     };
-    await handler({ method: 'POST', body: { topic: 'Provenance stamping' } } as any, res);
+    await handler({ method: 'POST', body: { topic: 'Charismatic communities and intimacy' } } as any, res);
 
     expect(res.statusCode).toBe(200);
     expect(res.jsonData.meta.generatedAt).not.toBe('2025-01-15T09:30:00Z');

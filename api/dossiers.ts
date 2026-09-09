@@ -10,6 +10,7 @@ import {
   generateWithHuggingFace,
   stripFalseGrounding
 } from '../shared/hfDossierClient.js';
+import { hasTopicFidelity } from '../shared/topicFidelity.js';
 
 const SYSTEM_INSTRUCTION = `
 You are the Lead Researcher and Editorial Atelier for "Cult of Psyche", an intellectual, darkly inquisitive YouTube channel and production atelier.
@@ -52,6 +53,13 @@ function stampProvenance(data: any, engine: string, grounded: boolean): any {
   data.meta.generatedAt = new Date().toISOString();
   data.meta.engine = engine;
   data.meta.grounded = grounded;
+  return data;
+}
+
+function stampResearchTopic(data: any, topic: string): any {
+  if (!data || typeof data !== 'object') return data;
+  if (!data.meta || typeof data.meta !== 'object') data.meta = {};
+  data.meta.researchTopic = topic;
   return data;
 }
 
@@ -157,13 +165,17 @@ ${DOSSIER_JSON_CONTRACT}
         throw new Error('Hugging Face response did not contain a parseable JSON dossier.');
       }
 
+      if (!hasTopicFidelity(sanitizedTopic, hfRaw)) {
+        throw new Error('Generated dossier did not stay aligned with the requested research topic.');
+      }
+
       // No grounding exists on this path, so no source may claim it.
       const hfNormalized = normalizeDossierCandidate(
-        stampProvenance(
+        stampResearchTopic(stampProvenance(
           stripFalseGrounding(hfRaw, `Hugging Face (${hfModel})`),
           `Hugging Face · ${hfModel}`,
           false
-        )
+        ), sanitizedTopic)
       );
       const hfDossier: LanternDossier = lanternDossierSchema.parse(hfNormalized);
       return res.status(200).json(hfDossier);
@@ -293,8 +305,12 @@ ${DOSSIER_JSON_CONTRACT}
     // 7. Deterministically repair near-miss output, then validate with the
     //    canonical Zod schema. Normalization runs after grounding so that
     //    grounded source IDs are already present.
+    if (!hasTopicFidelity(sanitizedTopic, rawData)) {
+      throw new Error('Generated dossier did not stay aligned with the requested research topic.');
+    }
+
     const normalized = normalizeDossierCandidate(
-      stampProvenance(rawData, `Google Gemini · ${model}`, true)
+      stampResearchTopic(stampProvenance(rawData, `Google Gemini · ${model}`, true), sanitizedTopic)
     );
     const validatedDossier: LanternDossier = lanternDossierSchema.parse(normalized);
 
@@ -318,6 +334,9 @@ ${DOSSIER_JSON_CONTRACT}
     if (isAbort) {
       statusCode = 504;
       userMessage = 'Request timed out while contacting Gemini research services.';
+    } else if (message.includes('did not stay aligned with the requested research topic')) {
+      statusCode = 422;
+      userMessage = 'The generated dossier did not stay aligned with the requested research topic. Try again with the same question or a more specific version.';
     } else if (upstreamStatus === 429) {
       statusCode = 429;
       userMessage = 'Research capacity is temporarily unavailable (upstream quota or credits exhausted). Try again later.';

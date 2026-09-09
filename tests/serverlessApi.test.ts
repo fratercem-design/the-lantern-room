@@ -169,7 +169,7 @@ describe('Serverless /api/dossiers API Route', () => {
       models: { generateContent: mockGenerateContent }
     } as any));
 
-    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Config contract' } });
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Charismatic communities and intimacy' } });
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
@@ -193,13 +193,13 @@ describe('Serverless /api/dossiers API Route', () => {
       models: { generateContent: mockGenerateContent }
     } as any));
 
-    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Contract transmission' } });
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Charismatic communities and intimacy' } });
     await handler(req, res);
 
     const contents = mockGenerateContent.mock.calls[0][0].contents as string;
     expect(contents).toContain('"credibilityScore": integer 1-5');
     expect(contents).toContain('HARD CONSTRAINTS');
-    expect(contents).toContain('Contract transmission');
+    expect(contents).toContain('Charismatic communities and intimacy');
   });
 
   it('recovers a dossier from a fenced, prose-wrapped model response', async () => {
@@ -214,7 +214,7 @@ describe('Serverless /api/dossiers API Route', () => {
       models: { generateContent: mockGenerateContent }
     } as any));
 
-    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Fenced output' } });
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Charismatic communities and intimacy' } });
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
@@ -238,6 +238,26 @@ describe('Serverless /api/dossiers API Route', () => {
 
     expect(res.statusCode).toBe(500);
     expect(res.jsonData.error).toBe('An error occurred during research synthesis. Please try again.');
+  });
+
+  it('rejects a valid but off-topic model dossier', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    const mockGenerateContent = vi.fn().mockResolvedValue({
+      text: JSON.stringify(fixtureDossier),
+      candidates: []
+    });
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: { generateContent: mockGenerateContent }
+    } as any));
+
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      body: { topic: 'The archaeology of Cahokia mounds' }
+    });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.jsonData.error).toContain('aligned with the requested research topic');
   });
   it('surfaces an upstream 429 as 429, not a generic 500', async () => {
     // Depleted Gemini credits used to be indistinguishable from a code bug.

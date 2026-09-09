@@ -18,7 +18,8 @@ Return ONE JSON object and nothing else. No prose, no markdown fences.
     "logline": string,
     "generatedAt": string (ISO 8601),
     "targetFormat": string,
-    "tone": string
+    "tone": string,
+    "researchTopic": string (the exact requested topic; the server overwrites this value)
   },
   "sources": [ {
     "id": string (e.g. "SRC-01", unique),

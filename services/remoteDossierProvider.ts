@@ -23,10 +23,16 @@ export class RemoteDossierProvider implements DossierProvider {
           errorMessage = errorJson.error;
         }
       } catch (_) {}
-      throw new Error(errorMessage);
+      const error = new Error(errorMessage) as Error & { status?: number };
+      error.status = response.status;
+      throw error;
     }
 
     const data = await response.json();
-    return lanternDossierSchema.parse(data);
+    try {
+      return lanternDossierSchema.parse(data);
+    } catch {
+      throw new Error('The server returned an incomplete dossier. Please try the synthesis again.');
+    }
   }
 }
