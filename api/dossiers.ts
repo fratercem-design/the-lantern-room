@@ -321,6 +321,9 @@ ${DOSSIER_JSON_CONTRACT}
     } else if (upstreamStatus === 429) {
       statusCode = 429;
       userMessage = 'Research capacity is temporarily unavailable (upstream quota or credits exhausted). Try again later.';
+    } else if (upstreamStatus === 403) {
+      statusCode = 503;
+      userMessage = 'The research model provider rejected the request (API not enabled, or the key lacks permission for this project).';
     } else if (upstreamStatus === 504 || upstreamStatus === 502) {
       statusCode = 504;
       userMessage = 'The upstream model gateway timed out before the dossier was complete. Try again.';

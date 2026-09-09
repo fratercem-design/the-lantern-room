@@ -280,4 +280,27 @@ describe('Serverless /api/dossiers API Route', () => {
     expect(res.statusCode).toBe(503);
     expect(res.jsonData.error).toContain('GEMINI_DOSSIER_MODEL');
   });
+  it('surfaces an upstream 403 as 503 naming the likely cause', async () => {
+    // Switching to Gemini produced 403 SERVICE_DISABLED ("Gemini API has not
+    // been used in project ... or it is disabled"), which arrived as a generic
+    // 500 and cost a runtime-log dive to identify.
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockGenerateContent = vi.fn().mockImplementation(() => {
+      const error: any = new Error('Gemini API has not been used in project 954951080916 before or it is disabled.');
+      error.status = 403;
+      return Promise.reject(error);
+    });
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: { generateContent: mockGenerateContent }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Service disabled path' } });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(503);
+    expect(res.jsonData.error).toContain('API not enabled');
+    expect(res.jsonData.error).not.toContain('954951080916');
+  });
 });
