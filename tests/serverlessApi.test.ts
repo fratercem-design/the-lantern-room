@@ -344,4 +344,24 @@ describe('Serverless /api/dossiers API Route', () => {
     expect(res.jsonData.error).toContain('API not enabled');
     expect(res.jsonData.error).not.toContain('954951080916');
   });
+  it('surfaces a depleted-credits message as 429 even without a 429 status', async () => {
+    // The Hugging Face router reports exhausted credits in the body, not via
+    // an HTTP 429, so it arrived as a generic 500.
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockGenerateContent = vi.fn().mockRejectedValue(
+      new Error('Hugging Face router error: {"error":"You have depleted your monthly included credits."}')
+    );
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: { generateContent: mockGenerateContent }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Depleted credits path' } });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(429);
+    expect(res.jsonData.error).toContain('exhausted');
+    expect(res.jsonData.error).not.toContain('Hugging Face router error');
+  });
 });

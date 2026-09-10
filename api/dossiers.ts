@@ -340,9 +340,15 @@ ${DOSSIER_JSON_CONTRACT}
     } else if (upstreamStatus === 402) {
       statusCode = 402;
       userMessage = 'Hugging Face inference credits are exhausted. Add credits or switch providers before trying again.';
-    } else if (upstreamStatus === 429) {
+    } else if (
+      upstreamStatus === 429 ||
+      // Some providers report exhaustion only in the body: the HF router
+      // returned "You have depleted your monthly included credits" without a
+      // 402 or 429 status, so the 402 branch above never saw it.
+      /depleted|insufficient credit/i.test(message)
+    ) {
       statusCode = 429;
-      userMessage = 'Research capacity is temporarily unavailable (upstream quota or credits exhausted). Try again later.';
+      userMessage = 'Research capacity is exhausted (upstream quota or credits depleted). Top up the provider account or switch DOSSIER_PROVIDER.';
     } else if (upstreamStatus === 403) {
       statusCode = 503;
       userMessage = 'The research model provider rejected the request (API not enabled, or the key lacks permission for this project).';
