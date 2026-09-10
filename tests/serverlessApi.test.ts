@@ -281,6 +281,27 @@ describe('Serverless /api/dossiers API Route', () => {
     expect(res.jsonData.error).not.toContain('prepayment');
   });
 
+  it('surfaces an upstream 402 as an actionable inference-credit error', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockGenerateContent = vi.fn().mockImplementation(() => {
+      const error: any = new Error('You have depleted your monthly included credits.');
+      error.status = 402;
+      return Promise.reject(error);
+    });
+
+    vi.mocked(GoogleGenAI).mockImplementation(() => ({
+      models: { generateContent: mockGenerateContent }
+    } as any));
+
+    const { req, res } = createMockReqRes({ method: 'POST', body: { topic: 'Credits path' } });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(402);
+    expect(res.jsonData.error).toContain('inference credits');
+    expect(res.jsonData.error).not.toContain('monthly included');
+  });
+
   it('surfaces a retired-model 404 as 503 naming the override', async () => {
     process.env.GEMINI_API_KEY = 'test-key';
 

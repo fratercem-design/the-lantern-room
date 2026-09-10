@@ -337,6 +337,9 @@ ${DOSSIER_JSON_CONTRACT}
     } else if (message.includes('did not stay aligned with the requested research topic')) {
       statusCode = 422;
       userMessage = 'The generated dossier did not stay aligned with the requested research topic. Try again with the same question or a more specific version.';
+    } else if (upstreamStatus === 402) {
+      statusCode = 402;
+      userMessage = 'Hugging Face inference credits are exhausted. Add credits or switch providers before trying again.';
     } else if (upstreamStatus === 429) {
       statusCode = 429;
       userMessage = 'Research capacity is temporarily unavailable (upstream quota or credits exhausted). Try again later.';
